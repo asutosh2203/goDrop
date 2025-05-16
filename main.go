@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func main() {
@@ -51,6 +54,7 @@ func main() {
 }
 
 func handleConn(conn net.Conn) bool {
+	const MaxFileSize = 10 * 1024 * 1024 // 10 MB
 
 	reader := bufio.NewReader(conn)
 	filename := ""
@@ -70,6 +74,7 @@ func handleConn(conn net.Conn) bool {
 			return false
 		}
 
+		line = strings.TrimRight(line, "\r\n")
 		line = strings.TrimSpace(line)
 
 		if line == "" && !readFileContent {
@@ -104,6 +109,13 @@ func handleConn(conn net.Conn) bool {
 		}
 	}
 
+	if filesize > MaxFileSize {
+		fmt.Println("Filesize too large")
+		return false
+	}
+
+	// cleaning the file path name
+	filename = filepath.Base(filename)
 	fmt.Printf("START Reading file content from %v of size %v\n", filename, filesize)
 
 	// code for reading file content
@@ -114,7 +126,25 @@ func handleConn(conn net.Conn) bool {
 		return false
 	}
 
-	fmt.Println("File content: ", string(buf[:n]))
+	// Create the goDropped folder if it doesn't exist
+	os.MkdirAll("goDropped", os.ModePerm)
+
+	// Generate unique prefix
+	timestamp := time.Now().Unix()
+	clientIP := strings.Split(conn.RemoteAddr().String(), ":")[0]
+	prefix := fmt.Sprintf("%d_%s", timestamp, clientIP)
+
+	// Construct full path
+	fullPath := filepath.Join("goDropped", fmt.Sprintf("%s_%s", prefix, filename))
+
+	// saving the file
+	err = os.WriteFile(fullPath, buf[:n], 0644)
+	if err != nil {
+		fmt.Println("Error saving file:", err)
+		return false
+	}
+	
+	fmt.Printf("Saved %s in %s successfully\n", filename, fullPath)
 
 	return true
 }
