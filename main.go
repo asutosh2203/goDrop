@@ -3,7 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"io"
+	// "io"
 	"net"
 	"os"
 	"path/filepath"
@@ -33,12 +33,12 @@ func (e *ConnError) Error() string {
 
 func main() {
 
-	listener, err := net.Listen("tcp", "localhost:8080")
+	listener, err := net.Listen("tcp", ":3000")
 
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("Serving on PORT 8080")
+	fmt.Println("Serving on PORT 3000")
 	defer listener.Close()
 
 	for {
@@ -129,17 +129,6 @@ func handleConn(conn net.Conn) error {
 	filename = filepath.Base(filename)
 	fmt.Printf("START Reading file content from %v of size %v\n", filename, filesize)
 
-	// code for reading file content
-	buf := make([]byte, filesize)
-	n, err := io.ReadFull(reader, buf)
-	if err != nil {
-		fmt.Println("Error in receiving file")
-		return &ConnError{statusCode: 500, message: "Error in receiving file", details: err.Error()}
-	}
-
-	// Create the goDropped folder if it doesn't exist
-	os.MkdirAll("goDropped", os.ModePerm)
-
 	// Generate unique prefix
 	timestamp := time.Now().Unix()
 	clientIP := strings.Split(conn.RemoteAddr().String(), ":")[0]
@@ -148,12 +137,42 @@ func handleConn(conn net.Conn) error {
 	// Construct full path
 	fullPath := filepath.Join("goDropped", fmt.Sprintf("%s_%s", prefix, filename))
 
-	// saving the file
-	err = os.WriteFile(fullPath, buf[:n], 0644)
+	chunkSize := 4096 // 4KB
+	received := 0
+	buffer := make([]byte, chunkSize)
+
+	file, err := os.Create(fullPath)
 	if err != nil {
-		fmt.Println("Error saving file:", err)
-		return &ConnError{statusCode: 500, message: "Error in saving the file", details: err.Error()}
+		return &ConnError{statusCode: 500, message: "Error creating file", details: err.Error()}
 	}
+	defer file.Close()
+
+	for received < filesize {
+		remaining := filesize - received
+		if remaining < chunkSize {
+			buffer = buffer[:remaining] // read only what's left
+		}
+
+		n, err := reader.Read(buffer)
+		if err != nil {
+			return &ConnError{statusCode: 500, message: "Error reading file content", details: err.Error()}
+		}
+
+		_, err = file.Write(buffer[:n])
+		if err != nil {
+			return &ConnError{statusCode: 500, message: "Error writing to file", details: err.Error()}
+		}
+
+		received += n
+
+		// Simple progress bar
+		percent := float64(received) / float64(filesize) * 100
+		hashes := int(percent / 5)
+		spaces := 20 - hashes
+		fmt.Printf("\rReceiving: [%s%s] %.2f%%", strings.Repeat("#", hashes), strings.Repeat("-", spaces), percent)
+	}
+
+	fmt.Println("\nFile received successfully.")
 
 	fmt.Printf("Saved %s in %s successfully\n", filename, fullPath)
 
