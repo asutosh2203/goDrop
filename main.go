@@ -150,6 +150,9 @@ func handleConn(conn net.Conn) error {
 	clientIP := strings.Split(conn.RemoteAddr().String(), ":")[0]
 	prefix := fmt.Sprintf("%d_%s", timestamp, clientIP)
 
+	// Create the directory
+	os.MkdirAll("goDropped", 0755)
+
 	// Construct full path
 	fullPath := filepath.Join("goDropped", fmt.Sprintf("%s_%s", prefix, filename))
 
