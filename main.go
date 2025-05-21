@@ -3,12 +3,13 @@ package main
 import (
 	"bufio"
 	"fmt"
-	// "io"
 	"net"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -33,20 +34,33 @@ func (e *ConnError) Error() string {
 
 func main() {
 
-	listener, err := net.Listen("tcp", ":3000")
+	listener, err := net.Listen("tcp", "127.0.0.1:8080")
 
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("Serving on PORT 3000")
+	fmt.Println("Serving on PORT 8080")
 	defer listener.Close()
+
+	sigs := make(chan os.Signal, 1)
+	done := make(chan bool, 1)
+
+	// Register for SIGINT (Ctrl+C) and SIGTERM
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		sig := <-sigs
+		fmt.Println("Server is being closed due to signal: ", sig)
+		listener.Close()
+		done <- true
+	}()
 
 	for {
 		conn, err := listener.Accept()
 
 		if err != nil {
 			fmt.Println(err)
-			continue
+			break
 		}
 
 		go func(c net.Conn) {
@@ -70,6 +84,8 @@ func main() {
 		}(conn)
 	}
 
+	<-done
+	fmt.Println("Server shutdown")
 }
 
 func handleConn(conn net.Conn) error {
